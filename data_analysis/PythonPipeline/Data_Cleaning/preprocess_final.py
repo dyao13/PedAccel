@@ -209,7 +209,6 @@ def load_segment_sickbay(data_dir, window_size=15, lead_time=10, tag = ""):
             filtered_dict_final['end_time'] = np.array(end_time_str, dtype=object)
             filtered_dict_final['sbs'] = np.array(vitals_SBS)
             savemat(save_file, filtered_dict_final, appendmat = False)
-            return
 
 def load_gt3x_data(gt3x_filepath, to_numpy=False, verbose=False):
     '''
@@ -231,14 +230,14 @@ def load_gt3x_data(gt3x_filepath, to_numpy=False, verbose=False):
 
     return df, col_names
 
-def load_and_segment_data_mat(data_dir, window_size=15, lead_time=10, tag = ""):
+def load_and_segment_data_mat(data_dir, window_size=15, lead_time=15, tag = ""):
     '''
     Load actigraphy and vitals waveform MAT file from a directory and segment it into time windows. 
     PatientX
     |_PatientX_AccelData.gt3x
     |_PatientX_SickBayData.mat
     '''
-    load_segment_sickbay(data_dir, window_size, lead_time, tag)
+    # load_segment_sickbay(data_dir, window_size, lead_time, tag)
     # search for patient directories in the data directory
     for patient in os.listdir(data_dir):
         # filter out non-directories
@@ -279,8 +278,23 @@ def load_and_segment_data_mat(data_dir, window_size=15, lead_time=10, tag = ""):
             })
         
             print('Processing')
+            # print(acti_data['dts'].head())
+            print(acti_data.columns)
             windows = []
             sbs = []
+            
+            hr = vitals_data['hr']
+            SpO2 = vitals_data['spo2']
+            rr = vitals_data['rr']
+            bps = vitals_data['bps']
+            bpm = vitals_data['bpm']
+            bpd = vitals_data['bpd']
+            
+            # Create new start_time/end_time variables that are for acti_data
+            matched_start_times = []
+            matched_end_times = []
+            
+            # Iterate through every SBS score in epic_data
             for i, row in epic_data.iterrows():
                 # don't like the for-loop, but its not a big bottleneck for the number of SBS recordings we are getting right now. 
 
@@ -290,9 +304,23 @@ def load_and_segment_data_mat(data_dir, window_size=15, lead_time=10, tag = ""):
                     sbs.append(row['SBS'])
                     in_window['dts'] = in_window['dts'] - row['start_time']
                     windows.append(in_window)
+                    matched_start_times.append(row['start_time'])
+                    matched_end_times.append(row['end_time'])
                 else:
-                    print('No matching accelerometry data for SBS recording at ', row['dts'])
-
+                    # vitals_df.drop(index=i, inplace=True)
+                    hr[i, :] = np.nan
+                    SpO2[i, :] = np.nan
+                    rr[i, :] = np.nan
+                    bps[i, :] = np.nan
+                    bpm[i, :] = np.nan
+                    bpd[i, :] = np.nan
+                    print('No matching accelerometry data for SBS recording at start time', row['start_time']) 
+            hr = hr[~np.isnan(hr).any(axis=1)]
+            rr = rr[~np.isnan(rr).any(axis=1)]
+            SpO2 = SpO2[~np.isnan(SpO2).any(axis=1)]
+            bpm = bpm[~np.isnan(bpm).any(axis=1)]
+            bps = bps[~np.isnan(bps).any(axis=1)]
+            bpm = bpm[~np.isnan(bpm).any(axis=1)]
             print('Save to file')
             windows_merged = reduce(lambda  left,right: pd.merge(left,right,on=['dts'], how='outer'), windows)
             windows_merged.drop('dts', axis=1, inplace=True)
@@ -305,14 +333,14 @@ def load_and_segment_data_mat(data_dir, window_size=15, lead_time=10, tag = ""):
             print(x_mag.shape)
             print(sbs.shape)
 
-            # Vitals Data Preprocessed:
-            hr = vitals_data['hr']
-            SpO2 = vitals_data['spo2']
-            rr = vitals_data['rr']
-            bps = vitals_data['bps']
-            bpm = vitals_data['bpm']
-            bpd = vitals_data['bpd']
-            # final_file = os.path.join(patient_dir, f'{patient}_FULLDATA_{lead_time}MIN_{window_size - lead_time}MIN{tag}.mat')
+            # # Vitals Data Preprocessed:
+            # hr = vitals_df['hr']
+            # SpO2 = vitals_df['spo2']
+            # rr = vitals_df['rr']
+            # bps = vitals_df['bps']
+            # bpm = vitals_df['bpm']
+            # bpd = vitals_df['bpd']
+            # # final_file = os.path.join(patient_dir, f'{patient}_FULLDATA_{lead_time}MIN_{window_size - lead_time}MIN{tag}.mat')
 
             save_file = os.path.join(patient_dir, vitals_sbs_file)
             savemat(save_file, dict([('x_mag', x_mag), ('heart_rate', hr), 
@@ -406,8 +434,8 @@ if __name__ == '__main__':
     '''
     data_dir = r'C:\Users\sidha\OneDrive\Sid Stuff\PROJECTS\iMEDS Design Team\Data Analysis\PedAccel\data_analysis\PythonPipeline\PatientData'
     # data_dir = r'C:\Users\jakes\Documents\DT 6 Analysis\PythonCode\PedAccel\data_analysis\PythonPipeline\PatientData'
-    # load_and_segment_data(data_dir)
     window_size_in = 15
     lead_time_in = 15
     tag = ""
+    # load_segment_sickbay(data_dir, window_size_in, lead_time_in, tag)
     load_and_segment_data_mat(data_dir, window_size_in, lead_time_in, tag)
