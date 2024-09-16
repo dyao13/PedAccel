@@ -2,24 +2,11 @@ from scipy.io import loadmat
 from scipy.signal import butter, filtfilt, resample
 import pandas as pd
 import matplotlib.pyplot as plt
+import neurokit2 as nk
 import os
 
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
-raw_data = loadmat(os.path.join(data_dir, 'Patient2_Event_Row_4_Data_zero_order_interpolation_chunk0.mat'))
-
-time = raw_data['Time'].squeeze()[:10000]
-relative_time = raw_data['Relative Time (sec)'].squeeze()[:10000]
-ecg_1 = raw_data['GE_WAVE_ECG_1_ID'].squeeze()[:10000]
-ecg_2 = raw_data['GE_WAVE_ECG_2_ID'].squeeze()[:10000]
-ecg_3 = raw_data['GE_WAVE_ECG_3_ID'].squeeze()[:10000]
-time_uniform = raw_data['Time_uniform'].squeeze()[:10000]
-
-df = pd.DataFrame({
-    'Time': time,
-    'Relative Time (sec)': relative_time,
-    'ECG_1': ecg_1,
-    'ECG_2': ecg_2,
-    'ECG_3': ecg_3,})
+df = pd.read_csv(os.path.join(data_dir, 'chunk.csv'))
 
 original_sampling_rate = 250
 target_sampling_rate = 125
@@ -38,9 +25,9 @@ def apply_lowpass_filter(data, cutoff, fs, order=5):
     return y
 
 cutoff_frequency = nyquist_freq
-ecg_1_filtered = apply_lowpass_filter(ecg_1, cutoff_frequency, original_sampling_rate)
-ecg_2_filtered = apply_lowpass_filter(ecg_2, cutoff_frequency, original_sampling_rate)
-ecg_3_filtered = apply_lowpass_filter(ecg_3, cutoff_frequency, original_sampling_rate)
+ecg_1_filtered = apply_lowpass_filter(df['ECG_1'], cutoff_frequency, original_sampling_rate)
+ecg_2_filtered = apply_lowpass_filter(df['ECG_2'], cutoff_frequency, original_sampling_rate)
+ecg_3_filtered = apply_lowpass_filter(df['ECG_3'], cutoff_frequency, original_sampling_rate)
 
 resample_factor = target_sampling_rate / original_sampling_rate
 
@@ -48,38 +35,52 @@ ecg_1_downsampled = resample(ecg_1_filtered, int(len(ecg_1_filtered) * resample_
 ecg_2_downsampled = resample(ecg_2_filtered, int(len(ecg_2_filtered) * resample_factor))
 ecg_3_downsampled = resample(ecg_3_filtered, int(len(ecg_3_filtered) * resample_factor))
 
-time_downsampled = resample(relative_time, len(ecg_1_downsampled))
+time_downsampled = resample(df['Relative Time (sec)'], len(ecg_1_downsampled))
 
-df = pd.DataFrame({
-    'Relative Time (sec)': time_downsampled,
-    'ECG_1': ecg_1_downsampled,
-    'ECG_2': ecg_2_downsampled,
-    'ECG_3': ecg_3_downsampled,})
+df_downsampled = pd.DataFrame({
+    'Relative Time (sec)': time_downsampled[1000:len(time_downsampled)-1000],
+    'ECG_1': ecg_1_downsampled[1000:len(ecg_1_downsampled)-1000],
+    'ECG_2': ecg_2_downsampled[1000:len(ecg_2_downsampled)-1000],
+    'ECG_3': ecg_3_downsampled[1000:len(ecg_3_downsampled)-1000],})
 
-print(df.head())
+print("Data downsampled")
 
-plt.figure(figsize=(12, 6))
+df_cleaned = pd.DataFrame({
+    'Relative Time (sec)': df_downsampled['Relative Time (sec)'],
+    'ECG_1': nk.ecg_clean(df_downsampled['ECG_1'], sampling_rate=target_sampling_rate),
+    'ECG_2': nk.ecg_clean(df_downsampled['ECG_2'], sampling_rate=target_sampling_rate),
+    'ECG_3': nk.ecg_clean(df_downsampled['ECG_3'], sampling_rate=target_sampling_rate),})
+
+print("Data cleaned")
+
+signals1, info1 = nk.ecg_peaks(df_cleaned['ECG_1'], sampling_rate=target_sampling_rate, correct_artifacts=True)
+signals2, info2 = nk.ecg_peaks(df_cleaned['ECG_2'], sampling_rate=target_sampling_rate, correct_artifacts=True)
+signals3, info3 = nk.ecg_peaks(df_cleaned['ECG_3'], sampling_rate=target_sampling_rate, correct_artifacts=True)
+
+print("Peaks found")
+
+plt.figure(figsize=(12, 8))
 
 plt.subplot(3, 1, 1)
-plt.plot(df['Relative Time (sec)'], df['ECG_1'], label="ECG_1 (Lead I)")
-plt.title("ECG Signal 1 (Lead I)")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.grid(True)
+plt.plot(df_cleaned['Relative Time (sec)'], df_cleaned['ECG_1'], label='ECG_1')
+plt.plot(df_cleaned['Relative Time (sec)'].iloc[info1['ECG_R_Peaks']], 
+         df_cleaned['ECG_1'].iloc[info1['ECG_R_Peaks']], 'ro', label='R-peaks')
+plt.legend()
+plt.title('ECG_1 with R-peaks')
 
 plt.subplot(3, 1, 2)
-plt.plot(df['Relative Time (sec)'], df['ECG_2'], label="ECG_2 (Lead II)")
-plt.title("ECG Signal 2")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.grid(True)
+plt.plot(df_cleaned['Relative Time (sec)'], df_cleaned['ECG_2'], label='ECG_2')
+plt.plot(df_cleaned['Relative Time (sec)'].iloc[info2['ECG_R_Peaks']], 
+         df_cleaned['ECG_2'].iloc[info2['ECG_R_Peaks']], 'ro', label='R-peaks')
+plt.legend()
+plt.title('ECG_2 with R-peaks')
 
 plt.subplot(3, 1, 3)
-plt.plot(df['Relative Time (sec)'], df['ECG_3'], label="ECG_3 (Lead III)")
-plt.title("ECG Signal 3 (Lead III)")
-plt.xlabel("Time")
-plt.ylabel("Amplitude")
-plt.grid(True)
+plt.plot(df_cleaned['Relative Time (sec)'], df_cleaned['ECG_3'], label='ECG_3')
+plt.plot(df_cleaned['Relative Time (sec)'].iloc[info3['ECG_R_Peaks']], 
+         df_cleaned['ECG_3'].iloc[info3['ECG_R_Peaks']], 'ro', label='R-peaks')
+plt.legend()
+plt.title('ECG_3 with R-peaks')
 
 plt.tight_layout()
 plt.show()
