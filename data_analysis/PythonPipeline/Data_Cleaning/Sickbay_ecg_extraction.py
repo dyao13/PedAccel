@@ -1,4 +1,7 @@
-# SickBay ECG Data Extraction Code
+'''
+Extracts ECG data from SickBay CSV files and saves them as .mat files
+**This code is designed to run on the JHH SAFE Desktop Application**
+'''
 
 import pandas as pd
 import numpy as np
@@ -58,6 +61,5 @@ def load_sickbay_mar():
         
 # Finish one patient set extraction
         print(f"Saved {mat_file_name} for patient MRN: {patient_mrn}")
-        
-                    
+                  
 load_sickbay_mar()

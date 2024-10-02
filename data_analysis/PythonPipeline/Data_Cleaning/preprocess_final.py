@@ -321,11 +321,12 @@ def load_and_segment_data_mat(data_dir, window_size=15, lead_time=15, tag = ""):
             bpm = bpm[~np.isnan(bpm).any(axis=1)]
             bps = bps[~np.isnan(bps).any(axis=1)]
             bpm = bpm[~np.isnan(bpm).any(axis=1)]
+            
             print('Save to file')
             windows_merged = reduce(lambda  left,right: pd.merge(left,right,on=['dts'], how='outer'), windows)
             windows_merged.drop('dts', axis=1, inplace=True)
             windows_merged = windows_merged.apply(pd.to_numeric, downcast='float') #float32 is enough
-            windows_merged.interpolate(axis=1, inplace=True) #fill na with linear interpolation
+            windows_merged.interpolate(axis=1, limit_direction='both', inplace=True) #fill na with linear interpolation
 
             x_mag = np.transpose(windows_merged.to_numpy())
             assert not np.isnan(np.sum(x_mag)) # fast nan check
@@ -434,8 +435,8 @@ if __name__ == '__main__':
     '''
     data_dir = r'C:\Users\sidha\OneDrive\Sid Stuff\PROJECTS\iMEDS Design Team\Data Analysis\PedAccel\data_analysis\PythonPipeline\PatientData'
     # data_dir = r'C:\Users\jakes\Documents\DT 6 Analysis\PythonCode\PedAccel\data_analysis\PythonPipeline\PatientData'
-    window_size_in = 15
+    window_size_in = 16
     lead_time_in = 15
-    tag = ""
-    # load_segment_sickbay(data_dir, window_size_in, lead_time_in, tag)
+    tag = "Nurse"
+    #load_segment_sickbay(data_dir, window_size_in, lead_time_in, tag)
     load_and_segment_data_mat(data_dir, window_size_in, lead_time_in, tag)
