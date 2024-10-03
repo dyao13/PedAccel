@@ -6,44 +6,47 @@ import neurokit2 as nk
 import os
 
 data_dir = os.path.join(os.path.dirname(__file__), 'data')
-df = pd.read_csv(os.path.join(data_dir, 'chunk.csv'))
+df = pd.read_csv(os.path.join(data_dir, 'pat2.csv'))
 
-original_sampling_rate = 250
-target_sampling_rate = 125
+# original_sampling_rate = 250
+# target_sampling_rate = 125
 
-nyquist_freq = target_sampling_rate / 2
+# nyquist_freq = target_sampling_rate / 2
 
-def butter_lowpass(cutoff, fs, order=5):
-    nyquist = 0.5 * fs
-    normal_cutoff = cutoff / nyquist
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    return b, a
+# def butter_lowpass(cutoff, fs, order=5):
+#     nyquist = 0.5 * fs
+#     normal_cutoff = cutoff / nyquist
+#     b, a = butter(order, normal_cutoff, btype='low', analog=False)
+#     return b, a
 
-def apply_lowpass_filter(data, cutoff, fs, order=5):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = filtfilt(b, a, data)
-    return y
+# def apply_lowpass_filter(data, cutoff, fs, order=5):
+#     b, a = butter_lowpass(cutoff, fs, order=order)
+#     y = filtfilt(b, a, data)
+#     return y
 
-cutoff_frequency = nyquist_freq
-ecg_1_filtered = apply_lowpass_filter(df['ECG_1'], cutoff_frequency, original_sampling_rate)
-ecg_2_filtered = apply_lowpass_filter(df['ECG_2'], cutoff_frequency, original_sampling_rate)
-ecg_3_filtered = apply_lowpass_filter(df['ECG_3'], cutoff_frequency, original_sampling_rate)
+# cutoff_frequency = nyquist_freq
+# ecg_1_filtered = apply_lowpass_filter(df['ECG_1'], cutoff_frequency, original_sampling_rate)
+# ecg_2_filtered = apply_lowpass_filter(df['ECG_2'], cutoff_frequency, original_sampling_rate)
+# ecg_3_filtered = apply_lowpass_filter(df['ECG_3'], cutoff_frequency, original_sampling_rate)
 
-resample_factor = target_sampling_rate / original_sampling_rate
+# resample_factor = target_sampling_rate / original_sampling_rate
 
-ecg_1_downsampled = resample(ecg_1_filtered, int(len(ecg_1_filtered) * resample_factor))
-ecg_2_downsampled = resample(ecg_2_filtered, int(len(ecg_2_filtered) * resample_factor))
-ecg_3_downsampled = resample(ecg_3_filtered, int(len(ecg_3_filtered) * resample_factor))
+# ecg_1_downsampled = resample(ecg_1_filtered, int(len(ecg_1_filtered) * resample_factor))
+# ecg_2_downsampled = resample(ecg_2_filtered, int(len(ecg_2_filtered) * resample_factor))
+# ecg_3_downsampled = resample(ecg_3_filtered, int(len(ecg_3_filtered) * resample_factor))
 
-time_downsampled = resample(df['Relative Time (sec)'], len(ecg_1_downsampled))
+# time_downsampled = resample(df['Relative Time (sec)'], len(ecg_1_downsampled))
 
-df_downsampled = pd.DataFrame({
-    'Relative Time (sec)': time_downsampled[1000:len(time_downsampled)-1000],
-    'ECG_1': ecg_1_downsampled[1000:len(ecg_1_downsampled)-1000],
-    'ECG_2': ecg_2_downsampled[1000:len(ecg_2_downsampled)-1000],
-    'ECG_3': ecg_3_downsampled[1000:len(ecg_3_downsampled)-1000],})
+# df_downsampled = pd.DataFrame({
+#     'Relative Time (sec)': time_downsampled[1000:len(time_downsampled)-1000],
+#     'ECG_1': ecg_1_downsampled[1000:len(ecg_1_downsampled)-1000],
+#     'ECG_2': ecg_2_downsampled[1000:len(ecg_2_downsampled)-1000],
+#     'ECG_3': ecg_3_downsampled[1000:len(ecg_3_downsampled)-1000],})
 
-print("Data downsampled")
+# print("Data downsampled")
+
+target_sampling_rate = 250
+df_downsampled = df
 
 df_cleaned = pd.DataFrame({
     'Relative Time (sec)': df_downsampled['Relative Time (sec)'],
@@ -83,4 +86,7 @@ plt.legend()
 plt.title('ECG_3 with R-peaks')
 
 plt.tight_layout()
+plt.show()
+
+hrv_metrics = nk.hrv(signals1, sampling_rate=target_sampling_rate, show=True)
 plt.show()
