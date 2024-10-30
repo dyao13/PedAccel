@@ -140,3 +140,5 @@ DONOTPUSH/
 *.json
 *.xlsx
 *.gt3x
+*.npy
+*.txt
