@@ -44,6 +44,35 @@ def load_data(file_path):
 
     return sbs_score, start_time, end_time, ecg1, ecg2, ecg3
 
+def load_sickbay(data_dir, pat_num):
+    raw_sickbay = load_mat(os.path.join(data_dir, f'Patient{pat_num}_SICKBAY_10MIN_5MIN_Retro.mat'))
+
+    for key in raw_sickbay.keys():
+        if raw_sickbay[key].ndim == 2:
+            new = np.empty(raw_sickbay[key].shape[0], dtype=object)
+
+            for j in range(len(new)):
+                new[j] = raw_sickbay[key]
+            
+            raw_sickbay[key] = new
+    
+    sickbay_df = pd.DataFrame(sickbay_df)
+
+    sickbay_df['start_time'] = format_times(sickbay_df['start_time'])
+    sickbay_df['end_time'] = format_times(sickbay_df['end_time'])
+
+    return sickbay_df
+
+def load_ecg(data_dir, pat_num):
+    raw_ecg = load_mat(os.path.join(data_dir, f'Patient{pat_num}_10MIN_5MIN_ECG_SBSFinal.mat'))
+
+    ecg_df = pd.DataFrame(raw_ecg)
+
+    ecg_df['start_time'] = format_times(ecg_df['start_time'])
+    ecg_df['end_time'] = format_times(ecg_df['end_time'])
+
+    return ecg_df
+
 def extract_quality_signal(signal, sample_rate):
     quality_dict = {}
     step = int(sample_rate)
@@ -173,12 +202,15 @@ def load_dfs(output_dir, data_dir, i):
 
     return df_ecg1, df_ecg2, df_ecg3
 
-def read_retro_scores(data_dir, pat_num):
-    pain_df = pd.read_csv(os.path.join(data_dir, f'Patient{pat_num}_SBS_Scores_Retro.csv'))
-    pain_df = pain_df.dropna(axis=0, how='all')
-    pain_df = pain_df.dropna(axis=1, how='all')
+def load_retro(data_dir, pat_num):
+    retro_df = pd.read_csv(os.path.join(data_dir, f'Patient{pat_num}_SBS_Scores_Retro.csv'))
+    retro_df = retro_df.dropna(axis=0, how='all')
+    retro_df = retro_df.dropna(axis=1, how='all')
 
-    return pain_df
+    retro_df.insert(0, 'Time', format_times(retro_df['Time_uniform']))
+    retro_df.drop(columns=['Time_uniform', 'Datetime'], inplace=True)
+
+    return retro_df
 
 def load_gt3x(file_path):
     with FileReader(file_path) as reader:
@@ -194,7 +226,7 @@ def format_times(times):
         if isinstance(time, (list, np.ndarray)):
             time = time[0]
         
-        if isinstance(time, np.float64):
+        if isinstance(time, float):
             t[i] = np.datetime64(int(time), 'ns')
             continue
 
@@ -210,6 +242,40 @@ def format_times(times):
                 raise ValueError(f'Unrecognized date format: {time}')
 
     return t
+
+def match_times(df1, df2):
+    """
+    Concatenates two dataframes based on matching times
+
+    Args:
+        df1 (pd.DataFrame): Dataframe with 'Time'
+        df2 (pd.DataFrame): Dataframe with 'start_time' and 'end_time'
+
+    Returns:
+        pd.DataFrame: Concatenated dataframe with matching times
+    """
+    index1 = 0
+    index2 = 0
+
+    mask1 = np.zeros(len(df1), dtype=bool)
+    mask2 = np.zeros(len(df2), dtype=bool)
+
+    while index1 < len(df1) and index2 < len(df2):
+        if df1['Time'][index1] < df2['start_time'][index2]:
+            index1 += 1
+        elif df1['Time'][index1] > df2['end_time'][index2]:
+            index2 += 1
+        else:
+            mask1[index1] = True
+            mask2[index2] = True
+
+            index1 += 1
+            index2 += 1
+
+    df1 = df1[mask1].reset_index(drop=True)
+    df2 = df2[mask2].reset_index(drop=True)
+
+    return pd.concat([df1, df2], axis=1)
 
 def main():
     output_dir = os.path.join(os.path.dirname(__file__), 'output')
