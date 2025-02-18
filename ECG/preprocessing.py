@@ -44,6 +44,16 @@ def load_data(file_path):
 
     return sbs_score, start_time, end_time, ecg1, ecg2, ecg3
 
+def load_retro(data_dir, pat_num):
+    retro_df = pd.read_csv(os.path.join(data_dir, f'Patient{pat_num}_SBS_Scores_Retro.csv'))
+    retro_df = retro_df.dropna(axis=0, how='all')
+    retro_df = retro_df.dropna(axis=1, how='all')
+
+    retro_df.insert(0, 'Time', format_times(retro_df['Time_uniform']))
+    retro_df.drop(columns=['Time_uniform', 'Datetime'], inplace=True)
+
+    return retro_df
+
 def load_sickbay(data_dir, pat_num):
     raw_sickbay = load_mat(os.path.join(data_dir, f'Patient{pat_num}_SICKBAY_10MIN_5MIN_Retro.mat'))
 
@@ -56,7 +66,7 @@ def load_sickbay(data_dir, pat_num):
             
             raw_sickbay[key] = new
     
-    sickbay_df = pd.DataFrame(sickbay_df)
+    sickbay_df = pd.DataFrame(raw_sickbay)
 
     sickbay_df['start_time'] = format_times(sickbay_df['start_time'])
     sickbay_df['end_time'] = format_times(sickbay_df['end_time'])
@@ -125,6 +135,7 @@ def get_continuous_indices(arr):
 def get_metrics(sbs_score, ecg, fs):
     signals, _ = nk.ecg_peaks(ecg, sampling_rate=fs, correct_artifacts=True)
     df = nk.hrv(signals, sampling_rate=fs)
+
     df.insert(0, 'SBS_SCORE', sbs_score)
 
     return df
@@ -133,7 +144,7 @@ def save_metrics(file_path, pat_num, save=False):
     output_dir = os.path.join(os.path.dirname(__file__), 'output')
 
     if not os.path.exists(os.path.join(output_dir, pat_num+"quality_ecg1.npy")) or not os.path.exists(os.path.join(output_dir, pat_num+"quality_ecg2.npy")) or not os.path.exists(os.path.join(output_dir, pat_num+"quality_ecg3.npy")):
-        sbs_score, _, _, ecg1, ecg2, ecg3 = load_data(file_path)
+        sbs_score, start_time, end_time, ecg1, ecg2, ecg3 = load_data(file_path)
         fs = 250
         # fs = int(1e9 * len(ecg1[0]) / (end_time[0] - start_time[0]))
 
@@ -156,28 +167,34 @@ def save_metrics(file_path, pat_num, save=False):
             np.save(os.path.join(output_dir, pat_num+"quality_ecg2.npy"), quality_ecg2)
             np.save(os.path.join(output_dir, pat_num+"quality_ecg3.npy"), quality_ecg3)
     else:
-        sbs_score, _, _, _, _, _ = load_data(file_path)
+        sbs_score, start_time, end_time, _, _, _ = load_data(file_path)
         fs = 250
 
         quality_ecg1 = np.load(os.path.join(output_dir, pat_num+"quality_ecg1.npy"), allow_pickle=True)
         quality_ecg2 = np.load(os.path.join(output_dir, pat_num+"quality_ecg2.npy"), allow_pickle=True)
         quality_ecg3 = np.load(os.path.join(output_dir, pat_num+"quality_ecg3.npy"), allow_pickle=True)
 
-    df_ecg1 = pd.DataFrame()
-    df_ecg2 = pd.DataFrame()
-    df_ecg3 = pd.DataFrame()
+    df_ecg1 = pd.DataFrame(columns=['start_time', 'end_time'])
+    df_ecg2 = pd.DataFrame(columns=['start_time', 'end_time'])
+    df_ecg3 = pd.DataFrame(columns=['start_time', 'end_time'])
 
     for i in tqdm(range(len(sbs_score))):
         if quality_ecg1[i].size > 4e3:
             metrics_1 = get_metrics(sbs_score[i], quality_ecg1[i], fs)
+            metrics_1.insert(0, 'start_time', start_time[i])
+            metrics_1.insert(1, 'end_time', end_time[i])
             df_ecg1 = pd.concat([df_ecg1, metrics_1], ignore_index=True)
 
         if quality_ecg2[i].size > 4e3:
             metrics_2 = get_metrics(sbs_score[i], quality_ecg2[i], fs)
+            metrics_2.insert(0, 'start_time', start_time[i])
+            metrics_2.insert(1, 'end_time', end_time[i])
             df_ecg2 = pd.concat([df_ecg2, metrics_2], ignore_index=True)
         
         if quality_ecg3[i].size > 4e3:
             metrics_3 = get_metrics(sbs_score[i], quality_ecg3[i], fs)
+            metrics_3.insert(0, 'start_time', start_time[i])
+            metrics_3.insert(1, 'end_time', end_time[i])
             df_ecg3 = pd.concat([df_ecg3, metrics_3], ignore_index=True)
     
     df_ecg1.to_csv(os.path.join(output_dir, pat_num+'df_ecg1.csv'), index=False)
@@ -201,16 +218,6 @@ def load_dfs(output_dir, data_dir, i):
         df_ecg3 = pd.read_csv(os.path.join(output_dir, pat_num+'df_ecg3.csv'))
 
     return df_ecg1, df_ecg2, df_ecg3
-
-def load_retro(data_dir, pat_num):
-    retro_df = pd.read_csv(os.path.join(data_dir, f'Patient{pat_num}_SBS_Scores_Retro.csv'))
-    retro_df = retro_df.dropna(axis=0, how='all')
-    retro_df = retro_df.dropna(axis=1, how='all')
-
-    retro_df.insert(0, 'Time', format_times(retro_df['Time_uniform']))
-    retro_df.drop(columns=['Time_uniform', 'Datetime'], inplace=True)
-
-    return retro_df
 
 def load_gt3x(file_path):
     with FileReader(file_path) as reader:
@@ -254,6 +261,10 @@ def match_times(df1, df2):
     Returns:
         pd.DataFrame: Concatenated dataframe with matching times
     """
+    # Convert 'start_time' and 'end_time' columns in df2 to datetime objects for valid comparison
+    df2['start_time'] = pd.to_datetime(df2['start_time'])
+    df2['end_time'] = pd.to_datetime(df2['end_time'])
+    
     index1 = 0
     index2 = 0
 
@@ -287,10 +298,15 @@ def main():
         print('Data directory does not exist')
         return
 
-    pat_nums = [4, 5, 6, 8, 9, 13]
+    # pat_nums = [4, 5, 6, 8, 9, 13]
+    pat_nums = [4]
 
     for i in tqdm(pat_nums):
-        _, _, _ = load_dfs(output_dir, data_dir, i)
+        df1, df2, df3 = load_dfs(output_dir, data_dir, i)
+
+        print(df1.head())
+        print(df2.head())
+        print(df3.head())
 
 if __name__ == "__main__":
     main()
