@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from tqdm import tqdm
+import math
+from pygt3x.reader import FileReader 
 
 def load_mar_data(data_dir, pat_num):
     """
@@ -62,6 +64,27 @@ def load_sickbay_data(data_dir, pat_num):
 
     return sickbay_df
 
+def load_acel_data(data_dir, pat_num):
+    """
+    Loads accelerometer data from a .gt3x file and returns it as a pandas DataFrame.
+    
+    Parameters:
+        data_dir (str): Path to the directory containing the .mat file.
+        pat_num (int): Patient number.
+        
+    Returns:
+        pd.DataFrame: DataFrame containing accelerometer data.
+    """
+    file_path = os.path.join(data_dir, f'Patient{pat_num}', f'Patient{pat_num}_AccelData.gt3x')
+
+    df = load_gt3x_file(file_path)
+
+    df = df[df["IdleSleepMode"] != True].reset_index(drop=True)
+    df.rename(columns={'Timestamp': 'time'}, inplace=True)
+    df['time'] = format_times(df['time'])
+
+    return df
+
 def load_mat_file(file_path):
     """
     Loads .mat file and returns a dictionary.
@@ -91,7 +114,29 @@ def load_mat_file(file_path):
 
     return raw_data
 
-def dict_to_df(raw_data, save_path = None):
+def load_gt3x_file(file_path):
+    """
+    Loads .gt3x file and returns a pandas DataFrame.
+    
+    Parameters:
+        file_path (str): Path to .gt3x file.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        
+    Returns:
+        pd.DataFrame: DataFrame containing data from .gt3x file.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"The file {file_path} does not exist.")
+
+    with FileReader(file_path) as reader:
+        df = reader.to_pandas()
+        df.reset_index(inplace = True)
+
+    return df
+
+def dict_to_df(raw_data, save_path=None):
     """
     Converts dictionary to pandas DataFrame and (optionally) saves it as a .csv file.
 
@@ -132,7 +177,14 @@ def format_times(times):
             time = time[0]
         
         if isinstance(time, float):
-            t[i] = np.datetime64(int(time), 'ns')
+            if int(math.log10(time)) == 9:
+                t[i] = np.datetime64(int(time), 's')
+            elif int(math.log10(time)) == 12:
+                t[i] = np.datetime64(int(time), 'ms')
+            elif int(math.log10(time)) == 15:
+                t[i] = np.datetime64(int(time), 'us')
+            elif int(math.log10(time)) == 18:
+                t[i] = np.datetime64(int(time), 'ns')
             continue
 
         if 'T' in time:
@@ -178,7 +230,41 @@ def match_times_time_time(df1, df2):
     pass
 
 def match_times_time_startend(df1, df2):
-    pass
+    """
+    Concatenates two dataframes based on matching times
+
+    Args:
+        df1 (pd.DataFrame): Dataframe with 'time'
+        df2 (pd.DataFrame): Dataframe with 'start_time' and 'end_time'
+
+    Returns:
+        pd.DataFrame: Concatenated dataframe with matching times
+    """
+    df2['start_time'] = pd.to_datetime(df2['start_time'])
+    df2['end_time'] = pd.to_datetime(df2['end_time'])
+    
+    index1 = 0
+    index2 = 0
+
+    mask1 = np.zeros(len(df1), dtype=bool)
+    mask2 = np.zeros(len(df2), dtype=bool)
+
+    while index1 < len(df1) and index2 < len(df2):
+        if df1['time'][index1] < df2['start_time'][index2]:
+            index1 += 1
+        elif df1['time'][index1] > df2['end_time'][index2]:
+            index2 += 1
+        else:
+            mask1[index1] = True
+            mask2[index2] = True
+
+            index1 += 1
+            index2 += 1
+
+    df1 = df1[mask1].reset_index(drop=True)
+    df2 = df2[mask2].reset_index(drop=True)
+
+    return pd.concat([df1, df2], axis=1)
 
 def match_times_startend_startend(df1, df2):
     pass
@@ -188,16 +274,18 @@ def main():
     pat_nums = [4]
 
     for pat_num in tqdm(pat_nums):
-        mar = load_mar_data(data_dir, pat_num)
-        sickbay = load_sickbay_data(data_dir, pat_num)
+        # mar = load_mar_data(data_dir, pat_num)
+        # sickbay = load_sickbay_data(data_dir, pat_num)
+        # matched = match_times(mar, sickbay)
 
-        print(mar.keys())
-        print(mar.shape)
-        print(mar.head())
+        # print(matched.keys())
+        # print(matched.shape)
+        # print(matched.head())
 
-        print(sickbay.keys())
-        print(sickbay.shape)
-        print(sickbay.head())
+        accel = load_acel_data(data_dir, pat_num)
+        print(accel.keys())
+        print(accel.shape)
+        print(accel.head())
 
 if __name__ == "__main__":
     main()
